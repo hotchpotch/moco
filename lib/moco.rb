@@ -1,6 +1,5 @@
 require "moco/version"
 require "thor"
-require "yaml"
 require "pathname"
 require 'shellwords'
 
@@ -9,6 +8,7 @@ require 'pry' # XXX
 module Moco
   class CLI < Thor
     class CompileOptionError < StandardError; end
+    attr_accessor :compile_options
     default_command :compile
 
     method_option :debug, type: :boolean
@@ -19,9 +19,8 @@ module Moco
     method_option :output_dir, type: :string, aliases: "-d"
     desc 'compile', "compile by mbed online compiler"
     def compile
+      @compile_options = ::Thor::CoreExt::HashWithIndifferentAccess.new options
       begin
-        @compile_options = ::Thor::CoreExt::HashWithIndifferentAccess.new options
-
         load_rc(ENV['HOME'])
         load_rc(Dir.pwd)
 
@@ -42,9 +41,9 @@ module Moco
     no_commands do
       #def validate!
       #  err = false
-      #  p @compile_options
+      #  p compile_options
       #  %w(username output_dir).each do |key|
-      #    unless @compile_options[key]
+      #    unless compile_options[key]
       #      say "option `#{key}` is required. should set args or ~/.mocorc or ./.mocorc", :red
       #      err = true
       #    end
@@ -55,8 +54,8 @@ module Moco
       #
       def set_password
         @password = nil
-        if @compile_options.password
-          @password = @compile_options.password
+        if compile_options.password
+          @password = compile_options.password
         else
           if keyring_command_exist?
             unless @password = get_password_by_username
@@ -91,8 +90,8 @@ module Moco
       end
 
       def set_repos
-        if @compile_options.repos
-          @repos = @compile_options.repos
+        if compile_options.repos
+          @repos = compile_options.repos
         else
           @repos = `hg config paths.default`.chomp
           d "set repos '#{@repos}' by `hg config paths.default`"
@@ -103,8 +102,8 @@ module Moco
       end
 
       def set_username
-        if @compile_options.username
-          @username = @compile_options.username
+        if compile_options.username
+          @username = compile_options.username
         else
           @username = URI.new(@repos).user
           d "set username by repository URL" if @username
@@ -116,14 +115,14 @@ module Moco
       end
 
       def set_output_dir
-        unless @compile_options.output_dir
+        unless compile_options.output_dir
           raise CompileOptionError.new "option `output_dir` is required. should set args or ~/.mocorc or ./.mocorc"
         end
 
-        @output_dir = Pathname.new(@compile_options.output_dir)
+        @output_dir = Pathname.new(compile_options.output_dir)
 
         unless @output_dir.directory?
-          raise CompileOptionError.new "output_dir `#{@compile_options.output_dir}` is not directory."
+          raise CompileOptionError.new "output_dir `#{compile_options.output_dir}` is not directory."
         end
       end
 
@@ -131,9 +130,9 @@ module Moco
         path = Pathname.new(dir).join('.mocorc')
         if path.file?
           d "mocorc found: #{path}"
-          rc_options = ::Thor::CoreExt::HashWithIndifferentAccess.new YAML.load(path.read)
-          d "rcfile options:", rc_options.inspect
-          @compile_options = rc_options.merge @compile_options
+          compile_options = @compile_options
+          instance_eval path.read, path.to_s, 0
+          d "compile options(after load_rc):", @compile_options
         else
           d "mocorc not found: #{path}"
         end
