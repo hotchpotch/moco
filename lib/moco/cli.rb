@@ -16,14 +16,14 @@ module Moco
     attr_accessor :compile_options
     default_command :compile
 
-    method_option :delete_password, type: :boolean
+    method_option :clear_keyring_password, type: :boolean
     method_option :replace_files, type: :array, aliases: "-f"
     method_option :repository, type: :string, aliases: "-r"
     method_option :username, type: :string, aliases: "-u"
     method_option :platform, type: :string, aliases: "-b"
     method_option :password, type: :string, aliases: "-p"
     method_option :debug, type: :boolean
-    method_option :output_dir, type: :string, aliases: "-d"
+    method_option :output_dir, type: :string, aliases: "-o"
     desc 'compile', "compile by mbed online compiler"
 
     def compile
@@ -37,7 +37,7 @@ module Moco
 
         set_repository
         set_username
-        del_password if @compile_options.delete_password
+        del_password if @compile_options.clear_keyring_password
 
         set_password
         set_output_dir
@@ -150,7 +150,7 @@ module Moco
         end
 
         unless @replace_files.empty?
-          say "UPLOAD FILES: #{@replace_files.join(', ')}"
+          say "Upload files: #{@replace_files.join(', ')}"
         end
       end
 
@@ -175,19 +175,22 @@ module Moco
           @password = compile_options.password.call(@username)
         when String
           @password = compile_options.password
-        else
-          @password = nil
+        end
+        unless @password
+          raise CompileError.new("password is required.")
         end
       end
 
       def keyring
         if keyring_command_exist?
           Proc.new {|username|
-            username ||= 'mbed-user'
-            unless password = get_password_by_username(username)
-              system("keyring", "set", "mbed-moco", username)
-              if $?.success?
-                password = get_password_by_username(username)
+            password = nil
+            if username
+              unless password = get_password_by_username(username)
+                system("keyring", "set", "mbed-moco", username)
+                if $?.success?
+                  password = get_password_by_username(username)
+                end
               end
             end
             password
@@ -264,6 +267,10 @@ You should install keyring.
             @username = URI.parse(@repository).user
             d "set username by repository URL" if @username
           end
+        end
+
+        unless @username
+          raise CompileOptionError.new "username is required."
         end
       end
 

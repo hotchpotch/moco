@@ -61,7 +61,7 @@ module Moco
 
     def task_check
       res = faraday.get("output/#{task_id}")
-      raise ApiError.new('response code error', res) if res.body['code'] != 200
+      raise ApiError.new('response code is not 200', res) if res.body['code'] != 200
       data = res.body['result']['data']
       @task_complete_data = data
       raise CompileError.new if compile_error?
@@ -88,7 +88,7 @@ module Moco
       end
       res = faraday.post('start/', payload)
       @compile_result = res.body
-      raise ApiError.new('response code error', res) if @compile_result['code'] != 200
+      raise ApiError.new('response code is not 200', res) if @compile_result['code'] != 200
     end
   end
 end
