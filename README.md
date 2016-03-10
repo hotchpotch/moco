@@ -34,6 +34,11 @@ int main() {
     serial.print("Hello moco!\r\n");
 }
 
+```
+
+Let's compile!
+
+```
 $ moco compile
 Upload files: main.cpp
 [FAILED] option `platform` is required.
@@ -45,13 +50,10 @@ should set command-line arguments or ~/.mocorc or ./.mocorc
 
 oops, you should set `platform` select your boards.
 
+* Note: you must have the platform added your account on developer.mbed.org.
 
 ```
 $ moco c -b ST-Nucleo-L476RG
-# Note: you must have the platform added your account on developer.mbed.org.
-```
-
-```
 Upload files: main.cpp
 [FAILED] mbed online compile failed
 Macros: -DTARGET_NUCLEO_L476RG -DTARGET_M4 -DTARGET_CORTEX_M ...
@@ -72,6 +74,8 @@ int main() {
 }
 ```
 
+Let's retry!
+
 ```
 $ moco c -b ST-Nucleo-L476RG
 Upload files: main.cpp
@@ -82,7 +86,9 @@ Online compile successed! download firmare.
 -> firmware(17332 byte): /my/workspace/moco_79267.NUCLEO_L476RG.bin
 ```
 
-I want to write firmware on mbed volume!
+cool...
+
+but I want to write firmware on mbed volume.
 
 ```
 # -q is quiet option. -o is output_dir.
