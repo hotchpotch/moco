@@ -1,39 +1,134 @@
-# Moco
+# mbed online compiler for cli
 
-Welcome to your new gem! In this directory, you'll find the files you need to be able to package up your Ruby library into a gem. Put your Ruby code in the file `lib/moco`. To experiment with that code, run `bin/console` for an interactive prompt.
-
-TODO: Delete this and the text above, and describe your gem
+```moco``` is Mbed Online COmpiler for cli tool.
 
 ## Installation
 
-Add this line to your application's Gemfile:
-
-```ruby
-gem 'moco'
+```
+# Can't work now. not publish rubygems.org yet.
+$ gem install mbed-online-compiler-cli
 ```
 
-And then execute:
+## Set development.mbed.com username and password
 
-    $ bundle
+```
+# ~/.mocorc
+options['username'] = 'hotchpotch'
+options['password'] = 'your-password-string'
+# can use keyring
+# https://pypi.python.org/pypi/keyring
+options['password'] = keyring
+```
 
-Or install it yourself as:
+## compile by moco
 
-    $ gem install moco
 
-## Usage
+```
+$ cat main.cpp
 
-TODO: Write usage instructions here
+#include "mbed.h"
 
-## Development
+Serial serial(USBTX, USBRX);
 
-After checking out the repo, run `bin/setup` to install dependencies. Then, run `rake false` to run the tests. You can also run `bin/console` for an interactive prompt that will allow you to experiment.
+int main() {
+    serial.print("Hello moco!\r\n");
+}
 
-To install this gem onto your local machine, run `bundle exec rake install`. To release a new version, update the version number in `version.rb`, and then run `bundle exec rake release`, which will create a git tag for the version, push git commits and tags, and push the `.gem` file to [rubygems.org](https://rubygems.org).
+$ moco compile
+Upload files: main.cpp
+[FAILED] option `platform` is required.
+should set command-line arguments or ~/.mocorc or ./.mocorc
+...
+  -b, [--platform=PLATFORM]
+...
+```
 
-## Contributing
+oops, you should set `platform` select your boards.
 
-Bug reports and pull requests are welcome on GitHub at https://github.com/[USERNAME]/moco. This project is intended to be a safe, welcoming space for collaboration, and contributors are expected to adhere to the [Contributor Covenant](contributor-covenant.org) code of conduct.
 
+```
+$ moco c -b ST-Nucleo-L476RG
+# Note: you must have the platform added your account on developer.mbed.org.
+```
+
+```
+Upload files: main.cpp
+[FAILED] mbed online compile failed
+Macros: -DTARGET_NUCLEO_L476RG -DTARGET_M4 -DTARGET_CORTEX_M ...
+Compile: /opt/RVCT_5.05/bin/armcc -c --gnu -O3 -Otime ...
+main.cpp:7:11:error: #135: class "mbed::Serial" has no member "print"
+```
+
+oops, fixed main.cpp.
+
+```
+#include "mbed.h"
+
+Serial serial(USBTX, USBRX);
+
+int main() {
+    // change print to printf
+    serial.printf("Hello moco!\r\n");
+}
+```
+
+```
+$ moco c -b ST-Nucleo-L476RG
+Upload files: main.cpp
+Macros: -DTARGET_NUCLEO_L476RG -DTARGET_M4 -DTARGET_CORTEX_M ...
+Compile: /opt/RVCT_5.05/bin/armcc -c --gnu -O3 -Otime ...
+FromELF: /opt/RVCT_5.05/bin/fromelf --bin -o ...
+Online compile successed! download firmare.
+-> firmware(17332 byte): /my/workspace/moco_79267.NUCLEO_L476RG.bin
+```
+
+I want to write firmware on mbed volume!
+
+```
+# -q is quiet option. -o is output_dir.
+$ moco c -q -b ST-Nucleo-L476RG -o /Volumes/NODE_L476RG
+Upload files: main.cpp
+Online compile successed! download firmare.
+-> firmware(17332 byte): /Volumes/NODE_L476RG/moco_79267.NUCLEO_L476RG.bin
+```
+
+It works! :)
+
+## set repository option
+
+```
+$ rm main.cpp
+$ moco c -r https://developer.mbed.org/teams/mbed/code/mbed_blinky/ -q -b ST-Nucleo-L476RG -o /Volumes/NODE_L476RG
+```
+
+my mbed board works blink! :)
+
+### about .mocorc
+
+moco read rc files ./.mocorc & ~/.mocorc
+
+recommend setting is
+
+```
+# ~/.mocorc
+options['username'] = 'hotchpotch'
+options['password'] = keyring
+```
+
+```
+# ./.mocorc
+options['output_dir'] = '/Volumes/NODE_L476RG/'
+options['platform'] = 'ST-Nucleo-L476RG'
+```
+
+## use developer.mbed.org repository
+
+1. Your repository change status publish
+2. hg get https://your_repos...
+3. cd repos
+4. moco c
+
+It works!
 
 ## License
 
