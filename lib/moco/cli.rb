@@ -13,7 +13,12 @@ module Moco
     attr_accessor :compile_options
     default_command :compile
 
+    def help(*args)
+      self.class.command_help(shell, @default_command)
+    end
+
     method_option :delete_password, type: :boolean
+    method_option :replace_files, type: :array, aliases: "-f"
     method_option :repo, type: :string, aliases: "-r"
     method_option :username, type: :string, aliases: "-u"
     method_option :platform, type: :string, aliases: "-b"
