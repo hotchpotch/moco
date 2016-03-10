@@ -40,7 +40,7 @@ module Moco
     end
 
     def task_id
-      @start_result['result']['data']['task_id']
+      @compile_result['result']['data']['task_id']
     end
 
     def finished?
@@ -70,7 +70,7 @@ module Moco
     def compile
       payload = {
         platform: options.platform,
-        repo: options.repo,
+        repo: options.repository,
         clean: options.clean,
         extra_symbols: options.extra_symbols
       }
@@ -86,7 +86,8 @@ module Moco
         end
         payload['replace'] = files.to_json
       end
-      @start_result = faraday.post('start/', payload).body
+      @compile_result = faraday.post('start/', payload).body
+      raise ApiError.new('response code error') if @compile_result['code'] != 200
     end
   end
 end

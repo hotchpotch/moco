@@ -4,26 +4,24 @@ require "pathname"
 require "shellwords"
 require "logger"
 require "stringio"
+require "uri"
 
 module Moco
   class CLI < Thor
-    REPLACE_FILE_EXT = %w(.c .cpp .h .cxx .hpp .hxx)
+    TARGET_FILE_EXT = %w(.c .cpp .h .cxx .hpp .hxx .bld)
+    DEFAULT_REPOS = 'https://developer.mbed.org/users/hotchpotch/code/moco/'
     WAIT_CHECK_TIMES = 50
 
     attr_accessor :compile_options
     default_command :compile
 
-    def help(*args)
-      self.class.command_help(shell, @default_command)
-    end
-
     method_option :delete_password, type: :boolean
     method_option :replace_files, type: :array, aliases: "-f"
-    method_option :repo, type: :string, aliases: "-r"
+    method_option :repository, type: :string, aliases: "-r"
     method_option :username, type: :string, aliases: "-u"
     method_option :platform, type: :string, aliases: "-b"
     method_option :password, type: :string, aliases: "-p"
-    method_option :verbose, type: :boolean, aliases: "-v"
+    method_option :debug, type: :boolean
     method_option :output_dir, type: :string, aliases: "-d"
     desc 'compile', "compile by mbed online compiler"
 
@@ -36,9 +34,10 @@ module Moco
         load_rc(ENV['HOME'])
         load_rc(Dir.pwd)
 
-        set_repo
+        set_repository
         set_username
         del_password if @compile_options.delete_password
+
         set_password
         set_output_dir
         set_replace_files
@@ -46,7 +45,7 @@ module Moco
         check_required_options
 
         compiler = OnlineCompiler.new(compile_options.merge({
-          repo: @repo,
+          repository: @repository,
           username: @username,
           password: @password,
           replace_files: @replace_files
@@ -83,6 +82,10 @@ module Moco
         say "[FAILED] #{e.message}", :red
         help 'compile'
         exit 1
+      rescue StandardError => e
+        sio.rewind
+        say sio.read
+        raise e
       end
     end
 
@@ -121,9 +124,11 @@ module Moco
 
       def set_replace_files
         files = []
-        `hg status -umar`.each_line do |line|
-          file = line.split(' ')[1..-1].join(' ')
-          files << file if REPLACE_FILE_EXT.include? File.extname(file)
+        if hg_command_exist?
+          'hg status 2> /dev/null && hg status -umar'.each_line do |line|
+            file = line.split(' ')[1..-1].join(' ')
+            files << file if TARGET_FILE_EXT.include? File.extname(file)
+          end
         end
 
         if @compile_options.replace_files
@@ -134,7 +139,10 @@ module Moco
         files.sort.uniq.each do |file|
           @replace_files << Pathname.new(file)
         end
-        d "replace_files: #{@replace_files.join(', ')}"
+
+        unless @replace_files.empty?
+          d "replace_files: #{@replace_files.join(', ')}"
+        end
       end
 
       def check_required_options
@@ -153,27 +161,39 @@ module Moco
       end
 
       def set_password
-        @password = nil
-        if compile_options.password
+        case compile_options.password
+        when Proc
+          @password = compile_options.password.call(@username)
+        when String
           @password = compile_options.password
         else
-          if keyring_command_exist?
-            unless @password = get_password_by_username
-              system("keyring", "set", "mbed-moco", @username)
-              if $?.success?
-                @password = get_password_by_username
-              end
-            end
-          end
-        end
-
-        unless @password
-          raise CompileOptionError.new "option `password` is required. should set args or ~/.mocorc or ./.mocorc or install `keyring` command."
+          @password = nil
         end
       end
 
-      def get_password_by_username
-        pass = `keyring get mbed-moco #{Shellwords.escape @username}`
+      def keyring
+        if keyring_command_exist?
+          Proc.new {|username|
+            username ||= 'mbed-user'
+            unless password = get_password_by_username(username)
+              system("keyring", "set", "mbed-moco", username)
+              if $?.success?
+                password = get_password_by_username(username)
+              end
+            end
+            password
+          }
+        else
+          raise MocoError.new <<-EOF
+Can't find keyring command.
+You should install keyring.
+- https://pypi.python.org/pypi/keyring
+          EOF
+        end
+      end
+
+      def get_password_by_username(username)
+        pass = `keyring get mbed-moco #{Shellwords.escape username}`
         if $?.success?
           pass.chomp
         else
@@ -189,15 +209,41 @@ module Moco
         end
       end
 
-      def set_repo
-        if compile_options.repo
-          @repo = compile_options.repo
-        else
-          @repo = `hg config paths.default`.chomp
-          d "set repo '#{@repo}' by `hg config paths.default`"
+      def hg_command_exist?
+        begin
+          !!`hg -h`
+        rescue Errno::ENOENT => e
+          return false
         end
-        if @repo.nil? || @repo.empty?
-          raise CompileOptionError.new "mercurial repoitory not found."
+      end
+
+      def quiet_error_cmd(str)
+        begin
+          orig_error = $stderr
+          $stderr = StringIO.new
+          res = `#{str}`
+          require 'pry'
+
+          binding.pry
+          ''
+        ensure
+          $stderr = orig_error
+        end
+      end
+
+      def set_repository
+        if compile_options.repository
+          @repository = compile_options.repository
+        elsif hg_command_exist?
+          @repository = `hg config paths.default`.chomp
+          unless @repository.empty?
+            d "set repository '#{@repository}' by `hg config paths.default`"
+          end
+        end
+
+        if @repository.nil? || @repository.empty?
+          d "repository is empty. set default repository: #{DEFAULT_REPOS}"
+          @repository = DEFAULT_REPOS
         end
       end
 
@@ -205,12 +251,10 @@ module Moco
         if compile_options.username
           @username = compile_options.username
         else
-          @username = URI.new(@repo).user
-          d "set username by repoitory URL" if @username
-        end
-
-        if @username.nil?
-          raise CompileOptionError.new "option `username` is required. should set args or ~/.mocorc or ./.mocorc"
+          if @repository
+            @username = URI.parse(@repository).user
+            d "set username by repository URL" if @username
+          end
         end
       end
 
@@ -230,8 +274,9 @@ module Moco
         path = Pathname.new(dir).join('.mocorc')
         if path.file?
           d "mocorc found: #{path}"
-          compile_options = @compile_options
+          options = ::Thor::CoreExt::HashWithIndifferentAccess.new
           instance_eval path.read, path.to_s, 0
+          @compile_options = options.merge(@compile_options)
           d "compile options(after load_rc):", @compile_options
         else
           d "mocorc not found: #{path}"
@@ -239,7 +284,7 @@ module Moco
       end
 
       def d(*msg)
-        if options.verbose
+        if options.debug?
           say "VERBOSE: " + msg.join(" "), :yellow
         end
       end
