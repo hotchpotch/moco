@@ -61,7 +61,7 @@ module Moco
 
     def task_check
       res = faraday.get("output/#{task_id}")
-      raise ApiError.new('response code error') if res.body['code'] != 200
+      raise ApiError.new('response code error', res) if res.body['code'] != 200
       data = res.body['result']['data']
       @task_complete_data = data
       raise CompileError.new if compile_error?
@@ -86,8 +86,9 @@ module Moco
         end
         payload['replace'] = files.to_json
       end
-      @compile_result = faraday.post('start/', payload).body
-      raise ApiError.new('response code error') if @compile_result['code'] != 200
+      res = faraday.post('start/', payload)
+      @compile_result = res.body
+      raise ApiError.new('response code error', res) if @compile_result['code'] != 200
     end
   end
 end

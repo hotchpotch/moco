@@ -73,8 +73,14 @@ module Moco
         say "[FAILED] mbed online compile failed", :red
         render_messages compiler.compile_messages
         exit 1
-      rescue AuthError, ApiError => e
-        say "[FAILED] mbed compile #{e.name}. #{e.message}", :red
+      rescue ApiError => e
+        say "[FAILED] mbed compile API error. #{e.message}", :red
+        say "- may unknown/mistype platform: #{compile_options.platform}"
+        sio.rewind
+        say sio.read
+        exit 1
+      rescue AuthError => e
+        say "[FAILED] mbed compile Auth error. #{e.message}", :red
         sio.rewind
         say sio.read
         exit 1
