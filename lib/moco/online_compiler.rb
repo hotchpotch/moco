@@ -2,12 +2,11 @@
 require 'faraday'
 require 'faraday_middleware'
 require 'json'
-require 'pry'
 
 module Moco
   class OnlineCompiler
     API_ENDPOINT = 'http://developer.mbed.org/api/v2/tasks/compiler/'
-    attr_reader :compile_messages, :options, :faraday
+    attr_reader :options, :faraday
     def initialize(options, logger)
       @options = options
       @faraday = Faraday.new(url: API_ENDPOINT) do |faraday|
@@ -28,8 +27,15 @@ module Moco
         task_id: task_id
       }
       res = faraday.get('bin/', params)
-      path.join(data['binary']).open('w') {|f|
+
+      path = path.join(data['binary'])
+      path.open('w') {|f|
         f.puts res.body
+      }
+
+      {
+        path: path,
+        size: res.body.size
       }
     end
 
@@ -37,20 +43,31 @@ module Moco
       @start_result['result']['data']['task_id']
     end
 
+    def finished?
+      @task_complete_data && @task_complete_data['task_complete']
+    end
+
+    def compile_messages
+      if @task_complete_data
+        @task_complete_data['new_messages'] || []
+      else
+        []
+      end
+    end
+
+    def compile_error?
+      !!compile_messages.detect {|m| m['severity'] && m['severity'] == 'error' }
+    end
+
     def task_check
       res = faraday.get("output/#{task_id}")
       raise ApiError.new('response code error') if res.body['code'] != 200
       data = res.body['result']['data']
-      @compile_messages = data['new_messages'] || []
-      if data['task_complete']
-        @task_complete_data = data
-        true
-      else
-        false
-      end
+      @task_complete_data = data
+      raise CompileError.new if compile_error?
     end
 
-    def start
+    def compile
       payload = {
         platform: options.platform,
         repo: options.repo,
@@ -58,6 +75,13 @@ module Moco
         extra_symbols: options.extra_symbols
       }
       payload.each_key {|key| payload.delete(key) unless payload[key] }
+      if options.replace_files && options.replace_files.size > 0
+        files = []
+        options.replace_files.map do |file|
+          files << { file.to_s => file.read }
+        end
+        payload['replace'] = files.to_json
+      end
       @start_result = faraday.post('start/', payload).body
     end
   end

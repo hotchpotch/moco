@@ -7,6 +7,9 @@ require "stringio"
 
 module Moco
   class CLI < Thor
+    REPLACE_FILE_EXT = %w(.c .cpp .h .cxx .hpp .hxx)
+    WAIT_CHECK_TIMES = 50
+
     attr_accessor :compile_options
     default_command :compile
 
@@ -22,6 +25,9 @@ module Moco
     def compile
       @compile_options = ::Thor::CoreExt::HashWithIndifferentAccess.new options
       begin
+        sio = StringIO.new
+        logger = Logger.new(sio)
+
         load_rc(ENV['HOME'])
         load_rc(Dir.pwd)
 
@@ -30,58 +36,108 @@ module Moco
         del_password if @compile_options.delete_password
         set_password
         set_output_dir
+        set_replace_files
 
         check_required_options
 
-        sio = StringIO.new
-        logger = Logger.new(sio)
         compiler = OnlineCompiler.new(compile_options.merge({
           repo: @repo,
           username: @username,
           password: @password,
-          output_dir: @output_dir,
+          replace_files: @replace_files
         }), logger)
 
-        start
+        compiler.compile
 
-        50.times do
-          print '.'
-          if task_check
-            break
-          else
-            puts self.compile_messages.join("\n") unless compile_messages.empty?
-          end
-        end
-        download(options.output_dir)
+        WAIT_CHECK_TIMES.times do
+          compiler.task_check
+          render_messages compiler.compile_messages
 
-        if compile_options.verbose
-          sio.rewind
-          d sio.read
+          break if compiler.finished?
+
+          sleep 2
         end
 
-        say "finished", :blue
-      rescue ApiError => e
-        say "mbed compile API faild. " + e.message, :red
+        say "Online compile successed! download firmare.", :green
+        download_info = compiler.download(@output_dir)
+        say "-> firmware(#{download_info[:size]} byte): #{download_info[:path]}"
+
         sio.rewind
-        say sio.read
+        d sio.read
+
+      rescue CompileError => e
+        say "[FAILED] mbed online compile failed", :red
+        render_messages compiler.compile_messages
         exit 1
-      rescue AuthError => e
-        say "mbed compile API Auth Error. " + e.message, :red
+      rescue AuthError, ApiError => e
+        say "[FAILED] mbed compile #{e.name}. #{e.message}", :red
         sio.rewind
         say sio.read
         exit 1
       rescue CompileOptionError => e
-        say e.message, :red
+        say "[FAILED] #{e.message}", :red
         help 'compile'
         exit 1
       end
     end
 
     no_commands do
+      def render_messages(messages)
+        messages.each do |message|
+          d message.inspect
+          case message["severity"]
+          when "error"
+            say error_message_format(message), :red
+          when "warning"
+            say error_message_format(message), :yellow
+          when "verbose"
+            if message["type"] == "info"
+              m = message["message"] || ''
+              case m.split(':')[0]
+              when 'Link'
+                d m
+              else
+                say message["message"]
+              end
+            end
+          end
+        end
+      end
+
+      def error_message_format(message)
+        [
+          message["file"].sub('/src/', ''),
+          message["line"],
+          message["col"],
+          message["severity"],
+          message["message"],
+        ].join(":")
+      end
+
+      def set_replace_files
+        if @compile_options.replace_files
+          files = @compile_options.replace_files
+        else
+          files = []
+          `hg status -m`.each_line do |line|
+            file = line.split(' ')[1..-1].join(' ')
+            files << file if REPLACE_FILE_EXT.include? File.extname(file)
+          end
+          files.uniq!
+        end
+
+        @replace_files = []
+        files.each do |file|
+          file = Pathname.new(file)
+          @replace_files << file if file.file?
+        end
+        d "replace_files: #{@replace_files.join(', ')}"
+      end
+
       def check_required_options
         %w(platform).each do |key|
           unless @compile_options[key]
-            raise CompileOptionError.new "option `#{key}` is required. should set args or ~/.mocorc or ./.mocorc"
+            raise CompileOptionError.new "option `#{key}` is required.\nshould set command-line arguments or ~/.mocorc or ./.mocorc"
           end
         end
       end
@@ -180,7 +236,7 @@ module Moco
       end
 
       def d(*msg)
-        if options.debug
+        if options.verbose
           say "VERBOSE: " + msg.join(" "), :yellow
         end
       end
