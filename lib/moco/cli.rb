@@ -9,6 +9,7 @@ require "uri"
 module Moco
   class CLI < Thor
     TARGET_FILE_EXT = %w(.c .cpp .h .cxx .hpp .hxx .bld)
+    TARGET_FILE_GLOB = TARGET_FILE_EXT.map {|e| e.sub('.', '')}.join(',')
     DEFAULT_REPOS = 'https://developer.mbed.org/users/hotchpotch/code/moco/'
     WAIT_CHECK_TIMES = 50
 
@@ -130,11 +131,13 @@ module Moco
 
       def set_replace_files
         files = []
-        if hg_command_exist?
-          'hg status 2> /dev/null && hg status -umar'.each_line do |line|
+        if hg_command_exist? && system('hg status 2> /dev/null')
+          `hg status -umar`.each_line do |line|
             file = line.split(' ')[1..-1].join(' ')
             files << file if TARGET_FILE_EXT.include? File.extname(file)
           end
+        else
+          files.concat Dir.glob("*.{#{TARGET_FILE_GLOB}}")
         end
 
         if @compile_options.replace_files
@@ -147,7 +150,7 @@ module Moco
         end
 
         unless @replace_files.empty?
-          d "replace_files: #{@replace_files.join(', ')}"
+          say "UPLOAD FILES: #{@replace_files.join(', ')}"
         end
       end
 
