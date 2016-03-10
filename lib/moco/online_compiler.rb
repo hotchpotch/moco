@@ -78,7 +78,11 @@ module Moco
       if options.replace_files && options.replace_files.size > 0
         files = []
         options.replace_files.map do |file|
-          files << { file.to_s => file.read }
+          if file.file?
+            files << { file.to_s => file.read }
+          else
+            files << { file.to_s => '' }
+          end
         end
         payload['replace'] = files.to_json
       end

@@ -115,21 +115,19 @@ module Moco
       end
 
       def set_replace_files
+        files = []
+        `hg status -umar`.each_line do |line|
+          file = line.split(' ')[1..-1].join(' ')
+          files << file if REPLACE_FILE_EXT.include? File.extname(file)
+        end
+
         if @compile_options.replace_files
-          files = @compile_options.replace_files
-        else
-          files = []
-          `hg status -m`.each_line do |line|
-            file = line.split(' ')[1..-1].join(' ')
-            files << file if REPLACE_FILE_EXT.include? File.extname(file)
-          end
-          files.uniq!
+          files.concat @compile_options.replace_files
         end
 
         @replace_files = []
-        files.each do |file|
-          file = Pathname.new(file)
-          @replace_files << file if file.file?
+        files.sort.uniq.each do |file|
+          @replace_files << Pathname.new(file)
         end
         d "replace_files: #{@replace_files.join(', ')}"
       end
