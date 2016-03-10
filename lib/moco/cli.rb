@@ -17,6 +17,7 @@ module Moco
     default_command :compile
 
     method_option :clear_keyring_password, type: :boolean
+    method_option :quiet, type: :boolean, aliases: "-q"
     method_option :replace_files, type: :array, aliases: "-f"
     method_option :repository, type: :string, aliases: "-r"
     method_option :username, type: :string, aliases: "-u"
@@ -117,7 +118,7 @@ module Moco
               when 'Link'
                 d m
               else
-                say message["message"]
+                say message["message"] unless @compile_options.quiet
               end
             end
           end
