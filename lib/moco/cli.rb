@@ -137,7 +137,7 @@ module Moco
 
       def set_replace_files
         files = []
-        if hg_command_exist? && system('hg status 2>&1 > /dev/null')
+        if hg_command_exist? && system('hg status > /dev/null 2>&1')
           `hg status -umar`.each_line do |line|
             file = line.split(' ')[1..-1].join(' ')
             files << file if TARGET_FILE_EXT.include? File.extname(file)
