@@ -4,7 +4,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'moco/version'
 
 Gem::Specification.new do |spec|
-  spec.name          = "moco"
+  spec.name          = "mbed-online-compiler-cli"
   spec.version       = Moco::VERSION
   spec.authors       = ["Yuichi Tateno"]
   spec.email         = ["hotchpotch@gmail.com"]
