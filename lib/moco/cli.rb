@@ -8,7 +8,7 @@ require "uri"
 
 module Moco
   class CLI < Thor
-    TARGET_FILE_EXT = %w(.c .cpp .h .cxx .hpp .hxx .bld)
+    TARGET_FILE_EXT = %w(.c .cpp .h .cxx .hpp .hxx .bld .lib)
     TARGET_FILE_GLOB = TARGET_FILE_EXT.map {|e| e.sub('.', '')}.join(',')
     DEFAULT_REPOS = 'https://developer.mbed.org/users/hotchpotch/code/moco/'
     WAIT_CHECK_TIMES = 50
@@ -29,6 +29,7 @@ module Moco
     def compile
       @compile_options = ::Thor::CoreExt::HashWithIndifferentAccess.new options
       begin
+        compiler = nil
         sio = StringIO.new
         logger = Logger.new(sio)
 
@@ -93,6 +94,10 @@ module Moco
         sio.rewind
         say sio.read
         raise e
+      ensure
+        if compiler
+          compiler.cancel!
+        end
       end
     end
 
@@ -131,7 +136,7 @@ module Moco
 
       def set_replace_files
         files = []
-        if hg_command_exist? && system('hg status 2> /dev/null')
+        if hg_command_exist? && system('hg status 2>&1 > /dev/null')
           `hg status -umar`.each_line do |line|
             file = line.split(' ')[1..-1].join(' ')
             files << file if TARGET_FILE_EXT.include? File.extname(file)

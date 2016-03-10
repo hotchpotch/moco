@@ -40,7 +40,17 @@ module Moco
     end
 
     def task_id
-      @compile_result['result']['data']['task_id']
+      if @compile_result.kind_of? Hash
+        @compile_result['result']['data']['task_id']
+      else
+        nil
+      end
+    end
+
+    def cancel!
+      if task_id
+        faraday.post('cancel/', {task_id: task_id})
+      end
     end
 
     def finished?
